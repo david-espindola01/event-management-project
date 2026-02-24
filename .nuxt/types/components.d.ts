@@ -14,7 +14,10 @@ type HydrationStrategies = {
 type LazyComponent<T> = DefineComponent<HydrationStrategies, {}, {}, {}, {}, {}, {}, { hydrated: () => void }> & T
 
 interface _GlobalComponents {
+  CategorySelect: typeof import("../../components/CategorySelect.vue")['default']
   EventCard: typeof import("../../components/EventCard.vue")['default']
+  Filters: typeof import("../../components/Filters.vue")['default']
+  SearchBar: typeof import("../../components/SearchBar.vue")['default']
   NuxtWelcome: typeof import("../../node_modules/nuxt/dist/app/components/welcome.vue")['default']
   NuxtLayout: typeof import("../../node_modules/nuxt/dist/app/components/nuxt-layout")['default']
   NuxtErrorBoundary: typeof import("../../node_modules/nuxt/dist/app/components/nuxt-error-boundary.vue")['default']
@@ -38,7 +41,10 @@ interface _GlobalComponents {
   Html: typeof import("../../node_modules/nuxt/dist/head/runtime/components")['Html']
   Body: typeof import("../../node_modules/nuxt/dist/head/runtime/components")['Body']
   NuxtIsland: typeof import("../../node_modules/nuxt/dist/app/components/nuxt-island")['default']
+  LazyCategorySelect: LazyComponent<typeof import("../../components/CategorySelect.vue")['default']>
   LazyEventCard: LazyComponent<typeof import("../../components/EventCard.vue")['default']>
+  LazyFilters: LazyComponent<typeof import("../../components/Filters.vue")['default']>
+  LazySearchBar: LazyComponent<typeof import("../../components/SearchBar.vue")['default']>
   LazyNuxtWelcome: LazyComponent<typeof import("../../node_modules/nuxt/dist/app/components/welcome.vue")['default']>
   LazyNuxtLayout: LazyComponent<typeof import("../../node_modules/nuxt/dist/app/components/nuxt-layout")['default']>
   LazyNuxtErrorBoundary: LazyComponent<typeof import("../../node_modules/nuxt/dist/app/components/nuxt-error-boundary.vue")['default']>

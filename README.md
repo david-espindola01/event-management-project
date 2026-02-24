@@ -12,7 +12,12 @@ npm install
 npm run dev
 ```
 
-Notas:
+Notes:
 - Archivos añadidos: `package.json`, `nuxt.config.ts`, `tsconfig.json`, `app.vue`, `pages/index.vue`, `components/EventCard.vue`, `assets/styles/main.css`.
 - Siguiente: instalar dependencias y ajustar layout/Design System según el equipo.
+
+## Design System
+
+He añadido un Design System base con tokens CSS (colores, radios, sombras, tipografías) en `assets/styles/main.css` y actualicé el `EventCard` para usar las variables y estilos responsivos.
+
 
