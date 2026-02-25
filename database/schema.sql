@@ -98,3 +98,54 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_event_history
     BEFORE UPDATE ON "Event"
     FOR EACH ROW EXECUTE FUNCTION save_event_history();
+
+-- ============================================================
+-- GESTOR DE EVENTOS - Views
+-- All views filter deleted records (deleted_at IS NULL)
+-- ============================================================
+
+-- Active events with category name and poster image
+CREATE OR REPLACE VIEW v_events AS
+SELECT
+    e."id_event",
+    e."NameEvent",
+    e."value",
+    e."description",
+    e."location",
+    e."date_time",
+    e."created_at",
+    c."id_category",
+    c."nameCategory",
+    (
+        SELECT "imageUrl"
+        FROM "EventImage"
+        WHERE "id_event" = e."id_event" AND "type" = 'poster'
+        LIMIT 1
+    ) AS "imageUrl"
+FROM "Event" e
+JOIN "Category" c ON e."Id_category" = c."id_category"
+WHERE e."deleted_at" IS NULL;
+
+-- -------------------------------------------------------
+
+-- Active categories only
+CREATE OR REPLACE VIEW v_categories AS
+SELECT
+    "id_category",
+    "nameCategory",
+    "created_at"
+FROM "Category"
+WHERE "deleted_at" IS NULL;
+
+-- -------------------------------------------------------
+
+-- Interest ranking report (RF-002.2)
+CREATE OR REPLACE VIEW v_interest_report AS
+SELECT
+    e."NameEvent"               AS "Event Name",
+    COUNT(i."id_interest")::INT AS "Number of Interests"
+FROM "Event" e
+LEFT JOIN "Interest" i ON e."id_event" = i."id_event"
+WHERE e."deleted_at" IS NULL
+GROUP BY e."id_event", e."NameEvent"
+ORDER BY "Number of Interests" DESC;
