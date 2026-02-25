@@ -1,107 +1,126 @@
 // composables/useCategories.ts
+import { ref, computed, readonly } from 'vue'
+
+const API = 'http://localhost:3001/api'
 
 export interface Category {
-  id: string
-  name: string
-  status: 'active' | 'inactive'
-  createdAt: string
+  id_category: number
+  nameCategory: string
+  created_at: string
+  deleted_at?: string | null
 }
 
 export interface CategoryFormErrors {
   name?: string
 }
 
-const mockCategories: Category[] = [
-  { id: '1', name: 'Música y Entretenimiento',  status: 'active',   createdAt: '2024-11-01' },
-  { id: '2', name: 'Literatura y Cultura',       status: 'active',   createdAt: '2024-11-01' },
-  { id: '3', name: 'Deporte y Bienestar',        status: 'active',   createdAt: '2024-11-15' },
-  { id: '4', name: 'Gastronomía',                status: 'active',   createdAt: '2024-12-01' },
-  { id: '5', name: 'Tecnología e Innovación',    status: 'inactive', createdAt: '2024-12-10' },
-]
-
-// Reactive global state — shared between admin and public views
-const categories = ref<Category[]>([...mockCategories])
+const categories = ref<Category[]>([])
+const loading    = ref(false)
+const error      = ref<string | null>(null)
 
 export function useCategories() {
-  // ── Public view: only active categories (RF-003.2) ──
   const activeCategories = computed(() =>
-    categories.value.filter(c => c.status === 'active')
+    categories.value.filter(c => !c.deleted_at)
   )
 
-  // ── Sorted alphabetically (RF-003.2) ──
   const sortedCategories = computed(() =>
-    [...categories.value].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    [...categories.value].sort((a, b) => a.nameCategory.localeCompare(b.nameCategory, 'es'))
   )
 
   const sortedActiveCategories = computed(() =>
-    [...activeCategories.value].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    [...activeCategories.value].sort((a, b) => a.nameCategory.localeCompare(b.nameCategory, 'es'))
   )
 
-  // ── Validate form (RF-003.1) ──
-  function validateForm(name: string, excludeId?: string): CategoryFormErrors {
+  async function fetchCategories(order?: 'asc') {
+    loading.value = true; error.value = null
+    try {
+      const params = order ? `?order=${order}` : ''
+      const res = await fetch(`${API}/categories${params}`)
+      if (!res.ok) throw new Error('Error al cargar categorías')
+      categories.value = await res.json()
+    } catch (e: any) { error.value = e.message }
+    finally { loading.value = false }
+  }
+
+  async function fetchCategoriesAdmin() {
+    loading.value = true; error.value = null
+    try {
+      const res = await fetch(`${API}/categories/admin`)
+      if (!res.ok) throw new Error('Error al cargar categorías')
+      categories.value = await res.json()
+    } catch (e: any) { error.value = e.message }
+    finally { loading.value = false }
+  }
+
+  function validateForm(name: string): CategoryFormErrors {
     const errors: CategoryFormErrors = {}
-    if (!name.trim()) {
-      errors.name = 'El nombre de la categoría es obligatorio.'
-    } else if (name.trim().length < 2) {
-      errors.name = 'El nombre debe tener al menos 2 caracteres.'
-    } else {
-      const duplicate = categories.value.some(
-        c => c.name.toLowerCase() === name.trim().toLowerCase() && c.id !== excludeId
-      )
-      if (duplicate) errors.name = 'Ya existe una categoría con ese nombre.'
-    }
+    if (!name.trim())           errors.name = 'El nombre es obligatorio.'
+    else if (name.trim().length < 2) errors.name = 'Mínimo 2 caracteres.'
     return errors
   }
 
-  // ── Create category (RF-003.1) ──
-  function createCategory(name: string): { success: boolean; errors?: CategoryFormErrors } {
+  async function createCategory(name: string): Promise<{ success: boolean; errors?: CategoryFormErrors; message?: string }> {
     const errors = validateForm(name)
-    if (Object.keys(errors).length > 0) return { success: false, errors }
-
-    categories.value.push({
-      id:        Date.now().toString(),
-      name:      name.trim(),
-      status:    'active',
-      createdAt: new Date().toISOString().split('T')[0],
-    })
-    return { success: true }
+    if (Object.keys(errors).length) return { success: false, errors }
+    try {
+      const res = await fetch(`${API}/categories/admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nameCategory: name }),
+      })
+      const data = await res.json()
+      if (!res.ok) return res.status === 409 ? { success: false, errors: { name: data.error } } : { success: false, message: data.error }
+      await fetchCategoriesAdmin()
+      return { success: true }
+    } catch { return { success: false, message: 'Error de conexión.' } }
   }
 
-  // ── Update category name (RF-003.3) ──
-  function updateCategory(id: string, name: string): { success: boolean; errors?: CategoryFormErrors } {
-    const errors = validateForm(name, id)
-    if (Object.keys(errors).length > 0) return { success: false, errors }
-
-    const category = categories.value.find(c => c.id === id)
-    if (category) category.name = name.trim()
-    return { success: true }
+  async function updateCategory(id: number, name: string): Promise<{ success: boolean; errors?: CategoryFormErrors; message?: string }> {
+    const errors = validateForm(name)
+    if (Object.keys(errors).length) return { success: false, errors }
+    try {
+      const res = await fetch(`${API}/categories/admin/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nameCategory: name }),
+      })
+      const data = await res.json()
+      if (!res.ok) return res.status === 409 ? { success: false, errors: { name: data.error } } : { success: false, message: data.error }
+      await fetchCategoriesAdmin()
+      return { success: true }
+    } catch { return { success: false, message: 'Error de conexión.' } }
   }
 
-  // ── Deactivate category — blocked if it has active events (RF-003.4) ──
-  function deactivateCategory(id: string, activeEventNames: string[]): { success: boolean; message?: string } {
-    if (activeEventNames.length > 0) {
-      return {
-        success: false,
-        message: `No es posible inactivar esta categoría. Tiene ${activeEventNames.length} evento(s) activo(s) vinculado(s). Reasigna los eventos antes de continuar.`,
-      }
-    }
-    const category = categories.value.find(c => c.id === id)
-    if (category) category.status = 'inactive'
-    return { success: true }
+  async function deactivateCategory(id: number): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API}/categories/admin/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) return { success: false, message: data.error }
+      await fetchCategoriesAdmin()
+      return { success: true }
+    } catch { return { success: false, message: 'Error de conexión.' } }
   }
 
-  // ── Reactivate category ──
-  function reactivateCategory(id: string): void {
-    const category = categories.value.find(c => c.id === id)
-    if (category) category.status = 'active'
+  async function reactivateCategory(id: number): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API}/categories/admin/${id}/restore`, { method: 'PATCH' })
+      const data = await res.json()
+      if (!res.ok) return { success: false, message: data.error }
+      await fetchCategoriesAdmin()
+      return { success: true }
+    } catch { return { success: false, message: 'Error de conexión.' } }
   }
 
   return {
-    categories:           readonly(categories),
+    categories: readonly(categories),
+    loading: readonly(loading),
+    error: readonly(error),
     activeCategories,
     sortedCategories,
     sortedActiveCategories,
     validateForm,
+    fetchCategories,
+    fetchCategoriesAdmin,
     createCategory,
     updateCategory,
     deactivateCategory,

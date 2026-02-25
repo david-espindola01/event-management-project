@@ -1,5 +1,3 @@
-// pages/admin/categories/index.vue
-
 <template>
   <div>
     <div class="section-header">
@@ -43,7 +41,10 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="filteredCategories.length === 0">
+            <tr v-if="loading">
+              <td colspan="3" style="text-align:center;padding:32px;color:var(--text-muted)">Cargando…</td>
+            </tr>
+            <tr v-else-if="filteredCategories.length === 0">
               <td colspan="3">
                 <div class="empty-state">
                   <div class="empty-state-icon">🏷️</div>
@@ -51,14 +52,14 @@
                 </div>
               </td>
             </tr>
-            <tr v-for="cat in filteredCategories" :key="cat.id">
+            <tr v-for="cat in filteredCategories" :key="cat.id_category">
               <td>
                 <div class="cat-name-cell">
                   <div class="cat-bar"></div>
-                  <span class="cat-name">{{ cat.name }}</span>
+                  <span class="cat-name">{{ cat.nameCategory }}</span>
                 </div>
               </td>
-              <td class="td-secondary">{{ countActiveEvents(cat.id) }}</td>
+              <td class="td-secondary">{{ countActiveEvents(cat.id_category) }}</td>
               <td>
                 <div class="actions">
                   <AppButtonAdmin variant="ghost" size="sm" icon-only @click="openModal('edit', cat)" title="Editar">
@@ -108,7 +109,7 @@
       </Transition>
     </Teleport>
 
-    <!-- MODAL DEACTIVATE ERROR -->
+    <!-- MODAL ERROR DEACTIVATE -->
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="deactivateErrorOpen" class="modal-overlay" @click.self="deactivateErrorOpen = false">
@@ -119,17 +120,6 @@
             </div>
             <div class="modal-body">
               <p class="error-message">{{ deactivateErrorMsg }}</p>
-              <div class="blocked-list">
-                <p class="blocked-title">Eventos activos vinculados:</p>
-                <ul>
-                  <li v-for="name in blockedEventNames" :key="name" class="blocked-item">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                    {{ name }}
-                  </li>
-                </ul>
-              </div>
             </div>
             <div class="modal-footer">
               <AppButtonAdmin variant="secondary" @click="deactivateErrorOpen = false">Entendido</AppButtonAdmin>
@@ -148,8 +138,12 @@ import AppInputAdmin  from '~/components/admin/AppInputAdmin.vue'
 
 definePageMeta({ layout: 'admin' })
 
-const { sortedActiveCategories, createCategory, updateCategory, deactivateCategory } = useCategories()
-const { events } = useEvents()
+const { sortedActiveCategories, loading, fetchCategoriesAdmin, createCategory, updateCategory, deactivateCategory } = useCategories()
+const { events, fetchEventsAdmin } = useEvents()
+
+onMounted(async () => {
+  await Promise.all([fetchCategoriesAdmin(), fetchEventsAdmin()])
+})
 
 const searchQuery = ref('')
 const sortAsc     = ref(true)
@@ -159,11 +153,11 @@ const filteredCategories = computed(() => {
     ? [...sortedActiveCategories.value]
     : [...sortedActiveCategories.value].reverse()
   if (!searchQuery.value) return list
-  return list.filter(c => c.name.toLowerCase().includes(searchQuery.value.toLowerCase()))
+  return list.filter(c => c.nameCategory.toLowerCase().includes(searchQuery.value.toLowerCase()))
 })
 
-function countActiveEvents(categoryId: string): number {
-  return events.value.filter(e => e.categoryId === categoryId && e.status === 'visible').length
+function countActiveEvents(categoryId: number): number {
+  return events.value.filter(e => e.Id_category === categoryId && e.deleted_at === null).length
 }
 
 const modalOpen = ref(false)
@@ -174,37 +168,31 @@ const formError = ref('')
 const saving    = ref(false)
 
 function openModal(m: 'create' | 'edit', cat?: Category) {
-  mode.value = m
+  mode.value      = m
   formError.value = ''
-  formName.value = m === 'edit' && cat ? cat.name : ''
-  editing.value = cat ?? null
+  formName.value  = m === 'edit' && cat ? cat.nameCategory : ''
+  editing.value   = cat ?? null
   modalOpen.value = true
 }
 function closeModal() { modalOpen.value = false; formError.value = '' }
 
 async function save() {
   saving.value = true
-  await new Promise(r => setTimeout(r, 300))
   const result = mode.value === 'create'
-    ? createCategory(formName.value)
-    : updateCategory(editing.value!.id, formName.value)
+    ? await createCategory(formName.value)
+    : await updateCategory(editing.value!.id_category, formName.value)
   if (result.success) closeModal()
-  else formError.value = result.errors?.name ?? 'Error desconocido.'
+  else formError.value = result.errors?.name ?? result.message ?? 'Error desconocido.'
   saving.value = false
 }
 
 const deactivateErrorOpen = ref(false)
 const deactivateErrorMsg  = ref('')
-const blockedEventNames   = ref<string[]>([])
 
-function tryDeactivate(cat: Category) {
-  const activeEventNames = events.value
-    .filter(e => e.categoryId === cat.id && e.status === 'visible')
-    .map(e => e.name)
-  const result = deactivateCategory(cat.id, activeEventNames)
+async function tryDeactivate(cat: Category) {
+  const result = await deactivateCategory(cat.id_category)
   if (!result.success) {
-    deactivateErrorMsg.value  = result.message ?? ''
-    blockedEventNames.value   = activeEventNames
+    deactivateErrorMsg.value  = result.message ?? 'No es posible inactivar esta categoría.'
     deactivateErrorOpen.value = true
   }
 }
@@ -224,9 +212,6 @@ function tryDeactivate(cat: Category) {
 .td-secondary { font-size:.85rem; color:var(--text-secondary); }
 .actions { display:flex; gap:5px; justify-content:center; }
 .error-message { font-size:.85rem; color:var(--text-secondary); line-height:1.5; }
-.blocked-list { margin-top:10px; padding:12px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-md); }
-.blocked-title { font-family:var(--font-display); font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin-bottom:7px; font-weight:700; }
-.blocked-item { display:flex; align-items:center; gap:7px; font-size:.82rem; color:var(--danger); padding:3px 0; }
 .modal-enter-active,.modal-leave-active { transition:opacity 180ms ease; }
 .modal-enter-from,.modal-leave-to { opacity:0; }
 </style>
